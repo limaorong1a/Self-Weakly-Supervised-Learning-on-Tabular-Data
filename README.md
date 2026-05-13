@@ -22,6 +22,145 @@ reports/references.bib    Bibliography for the report
 results/                  Experiment outputs
 ```
 
+
+## Fresh clone to final run checklist
+
+Follow these steps on a new machine or server.
+
+### 0. Clone the repository
+
+Replace the URL with your own repository URL if it is different:
+
+```bash
+git clone <your-repo-url>
+cd Self-Weakly-Supervised-Learning-on-Tabular-Data
+```
+
+### 1. Create a Python environment
+
+Python 3.10+ is recommended.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+pip install -e .
+```
+
+If PyTorch is not installed by the command above or you need a CUDA-specific wheel, install PyTorch from the official selector first, then rerun `pip install -e .`.
+
+### 2. Prepare the TableShift data
+
+Use one of the two supported data routes:
+
+- **Recommended for the course handout:** download the course Box data and arrange CSV files under `data/tableshift/<dataset>/`.
+- **Alternative:** install the official TableShift package with `pip install -e '.[tableshift]'` and run without `--csv-dir`.
+
+For the CSV route, the final tree must be:
+
+```text
+data/tableshift/assistments/train.csv
+data/tableshift/assistments/validation.csv
+data/tableshift/assistments/id_test.csv
+data/tableshift/assistments/ood_test.csv
+data/tableshift/nhanes_lead/train.csv
+...
+data/tableshift/acsunemployment/ood_test.csv
+```
+
+Each CSV must include one label column named `label`, `target`, or `y`.
+
+### 3. Verify the environment with toy data
+
+Run this before the full experiment:
+
+```bash
+python scripts/make_toy_csv.py
+swsl-run \
+  --csv-dir data/toy \
+  --datasets assistments \
+  --seeds 0 \
+  --epochs 2 \
+  --tta-steps 1 \
+  --methods logreg erm masked_ssl frc_tta \
+  --max-rows 200 \
+  --device cuda \
+  --output results/toy_metrics.csv
+```
+
+If CUDA is unavailable, change `--device cuda` to `--device cpu`.
+
+### 4. Run a small real-data debug job
+
+This confirms the real CSV layout before launching all six datasets:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swsl-run \
+  --csv-dir data/tableshift \
+  --datasets assistments \
+  --seeds 0 \
+  --methods logreg erm masked_ssl frc_tta \
+  --epochs 5 \
+  --tta-steps 3 \
+  --batch-size 256 \
+  --device cuda \
+  --output results/debug_assistments.csv
+```
+
+Use the GPU index from `nvidia-smi`; if your RTX 5090 is not GPU 0, replace `CUDA_VISIBLE_DEVICES=0` with the correct index.
+
+### 5. Run the full assignment experiment
+
+After the debug job succeeds, run all required datasets and three seeds:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swsl-run \
+  --csv-dir data/tableshift \
+  --datasets assistments nhanes_lead brfss_diabetes acsfoodstamps physionet acsunemployment \
+  --seeds 0 1 2 \
+  --methods logreg rf sk_mlp erm masked_ssl frc_tta \
+  --epochs 30 \
+  --tta-steps 20 \
+  --batch-size 512 \
+  --device cuda \
+  --output results/tableshift_metrics.csv
+```
+
+If you encounter CUDA out-of-memory on the RTX 5090, first retry with `--batch-size 256`. If it still fails, use the H20 by changing `CUDA_VISIBLE_DEVICES` to the H20 GPU index shown by `nvidia-smi`.
+
+### 6. Summarize results for the report
+
+```bash
+python scripts/summarize_results.py \
+  --input results/tableshift_metrics.csv \
+  --output results/tableshift_summary.csv
+```
+
+Use `results/tableshift_summary.csv` to fill the mean and standard deviation cells in `reports/main.tex`.
+
+### 7. Build the PDF report
+
+Download the NeurIPS 2025 style zip from the assignment link, copy `neurips_2025.sty` into `reports/`, then run:
+
+```bash
+cd reports
+latexmk -pdf main.tex
+cd ..
+```
+
+### 8. Package submission files
+
+Use your real student ID and name in the zip filename:
+
+```bash
+zip -r StudentID_Name.zip \
+  README.md pyproject.toml requirements.txt \
+  src scripts reports \
+  results/tableshift_metrics.csv results/tableshift_summary.csv
+```
+
+Do not include large raw datasets in the zip unless the instructor explicitly asks for them.
+
 ## Installation
 
 ```bash
