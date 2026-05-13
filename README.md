@@ -87,6 +87,83 @@ swsl-run \
 
 The output CSV contains accuracy, balanced accuracy, F1, ID/OOD split, seed, method, and generalization gap. Use only validation data for hyperparameter tuning; never inspect OOD labels except for final reporting.
 
+
+## GPU recommendation
+
+A GPU is helpful for the PyTorch methods (`erm`, `masked_ssl`, and `frc_tta`) but is not required for the sklearn baselines. For this assignment-scale MLP, **16 GB of VRAM is usually enough**, **24--32 GB is comfortable**, and larger memory is only needed if one-hot encoded ACS/PhysioNet features become very wide or you raise the batch size substantially.
+
+If both an NVIDIA H20 and an RTX 5090 are available, use the **RTX 5090 first** for this project:
+
+- RTX 5090 has 32 GB VRAM and is typically faster for a single local training job of this size.
+- H20 has much larger accelerator memory and is better reserved for very large jobs, multi-user servers, or cases where the 5090 runs out of memory.
+- If the 5090 reports CUDA out-of-memory, first lower `--batch-size` to 256; if that is still not enough, switch to H20.
+
+Check available GPUs:
+
+```bash
+nvidia-smi
+```
+
+Run on the first visible GPU, usually enough if the 5090 is the only CUDA device exposed:
+
+```bash
+swsl-run \
+  --csv-dir data/tableshift \
+  --datasets assistments nhanes_lead brfss_diabetes acsfoodstamps physionet acsunemployment \
+  --seeds 0 1 2 \
+  --methods logreg rf sk_mlp erm masked_ssl frc_tta \
+  --epochs 30 \
+  --tta-steps 20 \
+  --batch-size 512 \
+  --device cuda \
+  --output results/tableshift_metrics.csv
+```
+
+To force a specific GPU, choose the GPU index shown by `nvidia-smi`. For example, if the RTX 5090 is GPU 0:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 swsl-run \
+  --csv-dir data/tableshift \
+  --datasets assistments nhanes_lead brfss_diabetes acsfoodstamps physionet acsunemployment \
+  --seeds 0 1 2 \
+  --methods logreg rf sk_mlp erm masked_ssl frc_tta \
+  --epochs 30 \
+  --tta-steps 20 \
+  --batch-size 512 \
+  --device cuda \
+  --output results/tableshift_metrics.csv
+```
+
+If the H20 is GPU 1 and you want to run there instead, change only the device mask:
+
+```bash
+CUDA_VISIBLE_DEVICES=1 swsl-run \
+  --csv-dir data/tableshift \
+  --datasets assistments nhanes_lead brfss_diabetes acsfoodstamps physionet acsunemployment \
+  --seeds 0 1 2 \
+  --methods logreg rf sk_mlp erm masked_ssl frc_tta \
+  --epochs 30 \
+  --tta-steps 20 \
+  --batch-size 512 \
+  --device cuda \
+  --output results/tableshift_metrics.csv
+```
+
+For CPU-only debugging, use fewer datasets, one seed, fewer epochs, and a smaller batch size:
+
+```bash
+swsl-run \
+  --csv-dir data/tableshift \
+  --datasets assistments \
+  --seeds 0 \
+  --methods logreg erm masked_ssl frc_tta \
+  --epochs 5 \
+  --tta-steps 3 \
+  --batch-size 256 \
+  --device cpu \
+  --output results/debug_cpu_metrics.csv
+```
+
 ## Baselines and required reporting
 
 The default command runs five baselines plus the proposed method:
