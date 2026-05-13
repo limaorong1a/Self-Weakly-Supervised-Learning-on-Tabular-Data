@@ -39,6 +39,8 @@ Then run the normalizer. Replace `YOUR_ARCHIVE.zip` with the filename printed by
 python scripts/prepare_tableshift_csv.py \
   --archive YOUR_ARCHIVE.zip \
   --extract-dir data/raw_tableshift \
+  --output data/tableshift \
+  --overwrite
   --output data/tableshift
 ```
 
