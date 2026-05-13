@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+build/
+dist/
+*.egg-info/
+results/*.csv
+data/
+reports/*.aux
+reports/*.bbl
+reports/*.blg
+reports/*.log
+reports/*.out
+reports/*.pdf
+reports/*.fls
+reports/*.fdb_latexmk
