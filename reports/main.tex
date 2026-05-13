@@ -1,0 +1,76 @@
+\IfFileExists{neurips_2025.sty}{\documentclass{article}\usepackage[preprint]{neurips_2025}}{\documentclass[11pt]{article}\usepackage[margin=1in]{geometry}}
+\usepackage{amsmath,amssymb,booktabs,graphicx,url}
+\usepackage[numbers]{natbib}
+\title{Feature-Reliability Consistent Test-Time Adaptation for OOD Tabular Generalization}
+\author{Student Name \\ Student ID \\ Advanced Machine Learning}
+\begin{document}
+\maketitle
+\begin{abstract}
+Tabular out-of-distribution (OOD) generalization is challenging because feature columns are heterogeneous, non-exchangeable, and often governed by hidden scenario-dependent mechanisms. This report proposes Feature-Reliability Consistent Test-Time Adaptation (FRC-TTA), a self-supervised method for the TableShift benchmark. The method trains an ID classifier with masked feature reconstruction and then adapts at test time using only unlabeled target-domain features. The adaptation objective combines entropy minimization, column-wise masking consistency, and a weak source feature-statistics anchor. The design targets covariate and label-distribution shifts while explicitly avoiding target labels for training or tuning.
+\end{abstract}
+
+\section{Introduction}
+Real-world tabular deployments in finance, healthcare, public policy, education, and industrial inspection rarely satisfy the i.i.d. assumption. User populations, hospitals, devices, regional behavior, and data collection rules can change over time, producing covariate shift, label shift, and concept drift. TableShift provides official ID and OOD splits for evaluating these failures in a standardized way \citep{gardner2023tableshift}. Unlike images, tabular features do not have spatial locality or exchangeability; each column has a distinct semantic meaning. This motivates self-supervised signals that operate on named columns rather than generic augmentations.
+
+\paragraph{Contribution.} We implement FRC-TTA, a tabular-specific test-time adaptation framework. It (i) learns ID representations with supervised classification and masked feature reconstruction, (ii) adapts selected parameters on unlabeled OOD features, and (iii) reports Accuracy, Balanced Accuracy, F1, ID/OOD gap, and seed-level variability on the six required TableShift datasets.
+
+\section{Related Work}
+TableShift introduced benchmark datasets and domain splits for measuring tabular distribution shift \citep{gardner2023tableshift}. Recent tabular TTA methods include logic-rule adaptation in TabLog \citep{ren2024tablog}, uncertainty and label-distribution handling in AdapTable \citep{kim2024adaptable}, fully test-time tabular adaptation \citep{zhou2024fully}, and prior-free tabular TTA \citep{he2026priorfree}. FRC-TTA is complementary: it avoids hand-written logic rules and uses a simple masked-column consistency objective that can be applied uniformly across datasets.
+
+\section{Method}
+\subsection{Data protocol}
+During training, the method uses only ID training examples $\mathcal{D}_{tr}=\{(x_i,y_i)\}$ and validation data for hyperparameter selection. During adaptation, it uses OOD test features $\mathcal{X}_{ood}=\{x_j\}$ without labels. OOD labels are used only once for final metric computation.
+
+\subsection{ID training with masked reconstruction}
+Let $f_\theta(x)$ be an MLP classifier and $g_\phi(x)$ a lightweight reconstruction decoder. For each row, a Bernoulli column mask $m\sim\mathrm{Bernoulli}(p)$ corrupts input features by $\tilde{x}=x\odot(1-m)$. We optimize
+\begin{equation}
+\mathcal{L}_{train}=\mathrm{CE}(f_\theta(\tilde{x}),y)+\lambda_{rec}\frac{\|m\odot(g_\phi(\tilde{x})-x)\|_2^2}{\max(1,\|m\|_1)}.
+\end{equation}
+The reconstruction loss is computed only for intentionally hidden cells, forcing the model to learn stable cross-column dependencies while respecting feature identity.
+
+\subsection{Feature-Reliability Consistent TTA}
+At test time, FRC-TTA clones the trained model and updates a restricted parameter subset, by default BatchNorm scale and shift parameters. For an unlabeled target batch $B$, it minimizes
+\begin{equation}
+\mathcal{L}_{tta}=\lambda_H H(p_\theta(y|x)) + \lambda_C \mathrm{KL}\left(p_\theta(y|x) \;\|\; p_\theta(y|\tilde{x})\right) + \lambda_S\left(\|\mu_B-\mu_S\|_2^2+\|\sigma_B^2-\sigma_S^2\|_2^2\right),
+\end{equation}
+where $(\mu_S,\sigma_S^2)$ are source feature statistics and $(\mu_B,\sigma_B^2)$ are target-batch representation statistics. Entropy encourages confident predictions, consistency penalizes predictions that are unstable under feature corruption, and the source-statistics anchor reduces collapse when the target batch is small or label-shifted.
+
+\section{Experiments}
+\subsection{Datasets}
+The required datasets are \texttt{assistments}, \texttt{nhanes\_lead}, \texttt{brfss\_diabetes}, \texttt{acsfoodstamps}, \texttt{physionet}, and \texttt{acsunemployment}. Experiments must follow the official TableShift train/validation/ID-test/OOD-test splits.
+
+\subsection{Baselines}
+The code reports logistic regression, random forest, sklearn MLP, supervised PyTorch ERM, masked-SSL ERM, and the proposed FRC-TTA. This satisfies the requirement of at least three baselines in addition to the proposed method.
+
+\subsection{Training details}
+Unless validation tuning selects otherwise, use AdamW with learning rate $10^{-3}$, weight decay $10^{-4}$, batch size 512, 30 epochs, hidden dimension 256, depth 3, dropout 0.15, reconstruction weight 0.2, TTA learning rate $5\times10^{-4}$, and 20 adaptation epochs over the unlabeled target features. Run seeds 0, 1, and 2.
+
+\subsection{Results table template}
+After running the code, replace Table~\ref{tab:results} with aggregated values from \texttt{results/tableshift\_metrics.csv}. Report mean $\pm$ standard deviation.
+\begin{table}[h]
+\centering
+\caption{OOD results over three seeds. Fill with the produced CSV results.}
+\label{tab:results}
+\begin{tabular}{llccc}
+\toprule
+Dataset & Method & Accuracy & Balanced Acc. & F1 \\
+\midrule
+assistments & FRC-TTA & -- & -- & -- \\
+nhanes\_lead & FRC-TTA & -- & -- & -- \\
+brfss\_diabetes & FRC-TTA & -- & -- & -- \\
+acsfoodstamps & FRC-TTA & -- & -- & -- \\
+physionet & FRC-TTA & -- & -- & -- \\
+acsunemployment & FRC-TTA & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+FRC-TTA is most suitable when target features are available in batches and shifts affect feature marginals or representation calibration. It may be less effective under severe concept drift where confidence minimization reinforces wrong pseudo-decisions, or when target batches are too small for reliable feature statistics. The source-statistics anchor and restricted BatchNorm updates are designed to reduce these risks.
+
+\section{Conclusion}
+This project provides a reproducible self-supervised and weakly-supervised tabular OOD pipeline for TableShift. The proposed FRC-TTA objective is tailored to tabular data through column-wise masking and conservative test-time updates, and it can be evaluated under the strict no-target-label protocol required by the assignment.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+\end{document}
