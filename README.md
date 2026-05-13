@@ -41,6 +41,7 @@ python scripts/prepare_tableshift_csv.py \
   --extract-dir data/raw_tableshift \
   --output data/tableshift \
   --overwrite
+  --output data/tableshift
 ```
 
 If you have already manually extracted the archive into a directory, use `--source` instead of `--archive`:
@@ -48,8 +49,7 @@ If you have already manually extracted the archive into a directory, use `--sour
 ```bash
 python scripts/prepare_tableshift_csv.py \
   --source path/to/extracted_tableshift_directory \
-  --output data/tableshift \
-  --overwrite
+  --output data/tableshift
 ```
 
 The script copies or validates the required normalized layout:
@@ -61,7 +61,7 @@ data/tableshift/<dataset>/id_test.csv
 data/tableshift/<dataset>/ood_test.csv
 ```
 
-The normalizer supports both already-combined CSVs and the course archive pattern with separate feature/label files such as `*_Xtrain.csv` plus `*_ytrain.csv`. For separate files, it merges the feature columns and writes a final `label` column. It also warns if a split cannot be converted to contain one of the accepted label columns: `label`, `target`, or `y`. If the archive uses a different label-column name, rename that column before running the full experiment.
+It also warns if a split does not contain one of the accepted label columns: `label`, `target`, or `y`. If the archive uses a different label-column name, rename that column before running the full experiment.
 
 After normalization, verify the result:
 

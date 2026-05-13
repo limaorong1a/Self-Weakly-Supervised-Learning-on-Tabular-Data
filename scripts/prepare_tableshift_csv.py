@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import re
 import shutil
 import tarfile
 import zipfile
@@ -20,13 +19,11 @@ REQUIRED_DATASETS = [
 SPLIT_ALIASES = {
     "train": ["train", "training"],
     "validation": ["validation", "val", "valid", "dev"],
-    "id_test": ["id_test", "id-test", "idtest", "test_id", "test-id", "testid"],
+    "id_test": ["id_test", "id-test", "idtest", "test_id", "test-id", "testid", "id"],
     "ood_test": ["ood_test", "ood-test", "oodtest", "test_ood", "test-ood", "testood", "ood"],
 }
 
 LABEL_COLUMNS = {"label", "target", "y"}
-ROLE_FEATURES = {"x", "features", "feature"}
-ROLE_LABELS = {"y", "label", "labels", "target", "targets"}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -60,69 +57,34 @@ def _extract_archive(archive: Path, extract_dir: Path) -> Path:
     return destination
 
 
-def _normalize_text(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
-
-
-def _tokens(text: str) -> list[str]:
-    normalized = _normalize_text(text)
-    return [token for token in normalized.split("_") if token]
-
-
-def _compact(text: str) -> str:
-    return "".join(_tokens(text))
-
-
-def _tail_after_dataset(path: Path, dataset: str) -> str:
-    stem = _normalize_text(path.stem)
-    dataset_norm = _normalize_text(dataset)
-    if stem.startswith(dataset_norm):
-        stem = stem[len(dataset_norm) :].strip("_")
-    return stem
-
-
-def _detect_role(path: Path, dataset: str) -> str | None:
-    tail_tokens = _tokens(_tail_after_dataset(path, dataset))
-    if tail_tokens and tail_tokens[0] in ROLE_FEATURES:
-        return "x"
-    if tail_tokens and tail_tokens[0] in ROLE_LABELS:
-        return "y"
-
-    tail = _compact(_tail_after_dataset(path, dataset))
-    if tail.startswith("x"):
-        return "x"
-    if tail.startswith("y"):
-        return "y"
-    return None
-
-
-def _split_tail(path: Path, dataset: str) -> str:
-    tail = _tail_after_dataset(path, dataset)
-    role = _detect_role(path, dataset)
-    if role is None:
-        return _compact(tail)
-
-    tail_tokens = _tokens(tail)
-    if tail_tokens and tail_tokens[0] in (ROLE_FEATURES | ROLE_LABELS):
-        return "".join(tail_tokens[1:])
-
-    compact_tail = _compact(tail)
-    return compact_tail[1:] if compact_tail.startswith(role) else compact_tail
-
-
-def _matches_split(path: Path, dataset: str, split: str) -> bool:
-    tail = _split_tail(path, dataset)
-    aliases = {_compact(alias) for alias in SPLIT_ALIASES[split]}
-    return tail in aliases
+def _canonical_name(path: Path) -> str:
+    return path.stem.lower().replace(" ", "_")
 
 
 def _find_dataset_root(root: Path, dataset: str) -> Path | None:
-    candidates = [p for p in root.rglob("*") if p.is_dir() and _normalize_text(p.name) == _normalize_text(dataset)]
+    candidates = [p for p in root.rglob("*") if p.is_dir() and p.name.lower() == dataset]
     if candidates:
         return min(candidates, key=lambda p: len(p.parts))
-    csv_candidates = [p for p in root.rglob("*.csv") if _normalize_text(dataset) in _normalize_text(str(p))]
+    csv_candidates = [p for p in root.rglob("*.csv") if dataset in str(p).lower()]
     if csv_candidates:
         return min((p.parent for p in csv_candidates), key=lambda p: len(p.parts))
+    return None
+
+
+def _find_split_file(dataset_root: Path, dataset: str, split: str) -> Path | None:
+    aliases = SPLIT_ALIASES[split]
+    csv_files = list(dataset_root.rglob("*.csv"))
+    dataset_named_files = [p for p in csv_files if dataset in str(p).lower()]
+    if dataset_named_files:
+        csv_files = dataset_named_files
+    for csv_file in csv_files:
+        name = _canonical_name(csv_file)
+        if name == split:
+            return csv_file
+    for csv_file in csv_files:
+        name = _canonical_name(csv_file)
+        if any(name == alias or alias in name for alias in aliases):
+            return csv_file
     return None
 
 
@@ -137,95 +99,6 @@ def _has_label_column(path: Path) -> bool:
     return bool(header & LABEL_COLUMNS)
 
 
-def _find_combined_file(dataset_root: Path, dataset: str, split: str) -> Path | None:
-    candidates = [p for p in dataset_root.rglob("*.csv") if _matches_split(p, dataset, split) and _has_label_column(p)]
-    if candidates:
-        return min(candidates, key=lambda p: (len(p.parts), len(p.name)))
-    return None
-
-
-def _find_role_file(dataset_root: Path, dataset: str, split: str, role: str) -> Path | None:
-    candidates = [
-        p
-        for p in dataset_root.rglob("*.csv")
-        if _matches_split(p, dataset, split) and _detect_role(p, dataset) == role
-    ]
-    if candidates:
-        return min(candidates, key=lambda p: (len(p.parts), len(p.name)))
-    return None
-
-
-def _looks_numeric(value: str) -> bool:
-    try:
-        float(value)
-    except ValueError:
-        return False
-    return True
-
-
-def _read_label_values(path: Path) -> list[str]:
-    with path.open(newline="", encoding="utf-8-sig") as f:
-        rows = [row for row in csv.reader(f) if row]
-    if not rows:
-        return []
-
-    first_cell = rows[0][0].strip()
-    has_header = first_cell in LABEL_COLUMNS or (not _looks_numeric(first_cell) and len(rows) > 1)
-    data_rows = rows[1:] if has_header else rows
-    return [row[0] for row in data_rows]
-
-
-def _merge_feature_label_csv(feature_file: Path, label_file: Path, destination: Path) -> None:
-    labels = _read_label_values(label_file)
-    with feature_file.open(newline="", encoding="utf-8-sig") as f:
-        feature_rows = list(csv.reader(f))
-    if not feature_rows:
-        raise ValueError(f"Feature CSV is empty: {feature_file}")
-
-    header = feature_rows[0]
-    rows = feature_rows[1:]
-    if len(rows) != len(labels):
-        raise ValueError(
-            f"Feature/label row mismatch for {feature_file} and {label_file}: {len(rows)} features vs {len(labels)} labels"
-        )
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow([*header, "label"])
-        for row, label in zip(rows, labels, strict=True):
-            writer.writerow([*row, label])
-
-
-def _write_split(dataset_root: Path, dataset: str, split: str, destination: Path, overwrite: bool) -> bool:
-    if destination.exists() and not overwrite:
-        print(f"[SKIP] {destination} already exists; use --overwrite to replace it")
-        return _has_label_column(destination)
-
-    combined_file = _find_combined_file(dataset_root, dataset, split)
-    if combined_file is not None:
-        shutil.copy2(combined_file, destination)
-        print(f"[COPY] {combined_file} -> {destination}")
-        return True
-
-    feature_file = _find_role_file(dataset_root, dataset, split, "x")
-    label_file = _find_role_file(dataset_root, dataset, split, "y")
-    if feature_file is not None and label_file is not None:
-        _merge_feature_label_csv(feature_file, label_file, destination)
-        print(f"[MERGE] {feature_file} + {label_file} -> {destination}")
-        return True
-
-    print(
-        f"[MISS] {dataset}/{split}: need either one combined CSV with label/target/y "
-        f"or a matching X*/y* pair under {dataset_root}"
-    )
-    if feature_file is not None:
-        print(f"       found feature file only: {feature_file}")
-    if label_file is not None:
-        print(f"       found label file only: {label_file}")
-    return False
-
-
 def _normalize_dataset(source_root: Path, output_root: Path, dataset: str, overwrite: bool) -> bool:
     dataset_root = _find_dataset_root(source_root, dataset)
     if dataset_root is None:
@@ -236,12 +109,20 @@ def _normalize_dataset(source_root: Path, output_root: Path, dataset: str, overw
     output_dir.mkdir(parents=True, exist_ok=True)
     ok = True
     for split in ["train", "validation", "id_test", "ood_test"]:
+        source_file = _find_split_file(dataset_root, dataset, split)
         destination = output_dir / f"{split}.csv"
-        split_ok = _write_split(dataset_root, dataset, split, destination, overwrite)
-        if split_ok and not _has_label_column(destination):
+        if source_file is None:
+            print(f"[MISS] {dataset}/{split}: no matching CSV found under {dataset_root}")
+            ok = False
+            continue
+        if destination.exists() and not overwrite:
+            print(f"[SKIP] {destination} already exists; use --overwrite to replace it")
+        else:
+            shutil.copy2(source_file, destination)
+            print(f"[COPY] {source_file} -> {destination}")
+        if not _has_label_column(destination):
             print(f"[WARN] {destination} has no label column named one of {sorted(LABEL_COLUMNS)}")
-            split_ok = False
-        ok = split_ok and ok
+            ok = False
     return ok
 
 
