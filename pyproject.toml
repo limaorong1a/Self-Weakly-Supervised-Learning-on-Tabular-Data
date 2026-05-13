@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swsl-tabular-ood"
+version = "0.1.0"
+description = "Self/weakly-supervised OOD generalization experiments for TableShift tabular data"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "scikit-learn>=1.3",
+  "torch>=2.0",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+tableshift = ["tableshift"]
+report = ["matplotlib>=3.8", "seaborn>=0.13"]
+
+[project.scripts]
+swsl-run = "swsl_tabular_ood.cli:main"
