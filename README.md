@@ -23,6 +23,68 @@ results/                  Experiment outputs
 ```
 
 
+
+## Preparing a downloaded TableShift archive on the server
+
+If the course Box archive has already been downloaded into this project directory, first identify the archive filename:
+
+```bash
+pwd
+find . -maxdepth 2 -type f \( -name "*.zip" -o -name "*.tar" -o -name "*.tar.gz" -o -name "*.tgz" -o -name "*.tar.bz2" -o -name "*.tar.xz" \) -print
+```
+
+Then run the normalizer. Replace `YOUR_ARCHIVE.zip` with the filename printed by the command above:
+
+```bash
+python scripts/prepare_tableshift_csv.py \
+  --archive YOUR_ARCHIVE.zip \
+  --extract-dir data/raw_tableshift \
+  --output data/tableshift
+```
+
+If you have already manually extracted the archive into a directory, use `--source` instead of `--archive`:
+
+```bash
+python scripts/prepare_tableshift_csv.py \
+  --source path/to/extracted_tableshift_directory \
+  --output data/tableshift
+```
+
+The script copies or validates the required normalized layout:
+
+```text
+data/tableshift/<dataset>/train.csv
+data/tableshift/<dataset>/validation.csv
+data/tableshift/<dataset>/id_test.csv
+data/tableshift/<dataset>/ood_test.csv
+```
+
+It also warns if a split does not contain one of the accepted label columns: `label`, `target`, or `y`. If the archive uses a different label-column name, rename that column before running the full experiment.
+
+After normalization, verify the result:
+
+```bash
+find data/tableshift -maxdepth 2 -type f -name "*.csv" | sort
+```
+
+You should see 24 CSV files: four splits for each of the six datasets.
+
+If the script reports missing splits because the archive has unusual filenames, inspect the extracted tree:
+
+```bash
+find data/raw_tableshift -maxdepth 4 -type f | sort | sed -n '1,120p'
+```
+
+Then manually copy/rename files into the normalized layout, for example:
+
+```bash
+mkdir -p data/tableshift/assistments
+cp path/to/assistments_train.csv data/tableshift/assistments/train.csv
+cp path/to/assistments_val.csv data/tableshift/assistments/validation.csv
+cp path/to/assistments_id_test.csv data/tableshift/assistments/id_test.csv
+cp path/to/assistments_ood_test.csv data/tableshift/assistments/ood_test.csv
+```
+
 ## Fresh clone to final run checklist
 
 Follow these steps on a new machine or server.
